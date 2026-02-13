@@ -1,4 +1,5 @@
 import { db } from '../../database/connection';
+import { defaultConfig } from '../../config';
 
 export class RiskManager {
   private database = db.getConnection();
@@ -10,9 +11,9 @@ export class RiskManager {
 
   constructor(
     totalCapital: number = 1000,
-    maxDailyLoss: number = 0.05,
-    maxSingleTrade: number = 0.20,
-    maxDailyTrades: number = 3
+    maxDailyLoss: number = defaultConfig.risk.maxDailyLoss,
+    maxSingleTrade: number = defaultConfig.risk.maxSingleTrade,
+    maxDailyTrades: number = defaultConfig.risk.maxDailyTrades
   ) {
     this.totalCapital = totalCapital;
     this.maxDailyLoss = maxDailyLoss;
@@ -64,6 +65,27 @@ export class RiskManager {
     return {
       allowed: amount <= limit,
       limit,
+    };
+  }
+
+  getRiskSummary(): {
+    dailyLoss: { current: number; limit: number; allowed: boolean };
+    tradeCount: { current: number; limit: number; allowed: boolean };
+  } {
+    const lossCheck = this.checkDailyLossLimit();
+    const countCheck = this.checkDailyTradeCount();
+
+    return {
+      dailyLoss: {
+        current: lossCheck.currentLoss,
+        limit: lossCheck.limit,
+        allowed: lossCheck.allowed,
+      },
+      tradeCount: {
+        current: countCheck.count,
+        limit: countCheck.limit,
+        allowed: countCheck.allowed,
+      },
     };
   }
 

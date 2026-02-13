@@ -1,4 +1,4 @@
-import { Signal, ArbitrageOpportunity } from '../../types';
+import { Signal, ArbitrageOpportunity, SignalLevel } from '../../types';
 
 export interface SignalResult {
   signal: Signal;
@@ -16,10 +16,14 @@ export class SignalGenerator {
       market_id: marketId,
       signal_type: signalType,
       confidence: opportunity.confidence,
-      reason: `套利偏离: ${(opportunity.deviationPercent * 100).toFixed(2)}%, 预期收益: ${(opportunity.expectedReturn * 100).toFixed(2)}%`,
-      trigger_price: opportunity.recommendation === 'BUY_YES' ? opportunity.yesPrice : opportunity.noPrice,
+      reason: this.buildReason(opportunity),
+      trigger_price: opportunity.recommendation === 'BUY_YES' 
+        ? opportunity.yesPrice 
+        : opportunity.noPrice,
       suggested_amount: this.calculateSuggestedAmount(opportunity.expectedReturn),
       status: 'pending',
+      level: opportunity.level,
+      expiry_minutes: opportunity.expiryMinutes,
     };
 
     return { signal, opportunity };
@@ -33,11 +37,33 @@ export class SignalGenerator {
         return 'BUY_YES';
       case 'BUY_NO':
         return 'BUY_NO';
-      case 'BUY_BOTH':
-        return 'ARBITRAGE';
       default:
         return 'HOLD';
     }
+  }
+
+  private buildReason(opportunity: ArbitrageOpportunity): string {
+    const parts: string[] = [
+      `套利偏离: ${opportunity.deviationPercent.toFixed(2)}%`,
+      `预期收益: ${(opportunity.expectedReturn * 100).toFixed(2)}%`,
+      `信号等级: ${this.translateLevel(opportunity.level)}`,
+    ];
+    
+    if (opportunity.warningMessage) {
+      parts.push(`提醒: ${opportunity.warningMessage}`);
+    }
+    
+    return parts.join('; ');
+  }
+
+  private translateLevel(level: SignalLevel): string {
+    const map: Record<SignalLevel, string> = {
+      'CONSERVATIVE': '保守',
+      'STANDARD': '标准',
+      'AGGRESSIVE': '激进',
+      'RISKY': '高风险',
+    };
+    return map[level] || level;
   }
 
   private calculateSuggestedAmount(expectedReturn: number): number {
