@@ -1,0 +1,2 @@
+// Git keep for data directory
+# 此文件确保 data 目录被 Git 追踪，但 .db 文件会被 .gitignore 忽略

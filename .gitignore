@@ -1,0 +1,36 @@
+# 敏感配置
+.env
+.env.local
+.env.*.local
+config/local.ts
+
+# 数据库（包含交易数据）
+data/*.db
+data/*.db-journal
+data/*.sqlite
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+
+# 依赖
+node_modules/
+__pycache__/
+*.pyc
+.Python
+env/
+venv/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 测试数据
+test-data/
