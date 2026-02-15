@@ -1,4 +1,52 @@
 {
+  "name": "polymarket-trading-bot",
+  "version": "0.1.0",
+  "description": "Polymarket arbitrage trading bot with virtual backtesting",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "init-db": "tsx scripts/init-db.ts",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "backtest": "tsx src/backtest.ts",
+    "backtest:quick": "tsx src/backtest.ts --scenario=QUICK_RETURN --days=1",
+    "backtest:slow": "tsx src/backtest.ts --scenario=SLOW_RETURN --days=1",
+    "backtest:random": "tsx src/backtest.ts --scenario=RANDOM --days=7 --markets=5",
+    "integration-test": "bash scripts/integration-test.sh"
+  },
+  "keywords": [
+    "polymarket",
+    "trading",
+    "arbitrage",
+    "prediction-market",
+    "backtesting"
+  ],
+  "author": "Billy",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.11.1",
+    "express": "^4.18.3",
+    "node-cron": "^3.0.3",
+    "node-telegram-bot-api": "^0.64.0",
+    "winston": "^3.12.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.24",
+    "@types/node-cron": "^3.0.11",
+    "@types/node-telegram-bot-api": "^0.64.6",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  },
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
