@@ -1,7 +1,6 @@
 import { ArbitrageStrategy } from '../strategy/arbitrage';
 import { SignalGenerator } from '../strategy/signalGenerator';
 import { VirtualExecutor, VirtualTrade, BacktestResult } from '../execution/virtualExecutor';
-import { RiskManager } from '../risk/riskManager';
 import { Signal } from '../../types';
 
 export interface HistoricalPrice {
@@ -19,11 +18,75 @@ export interface BacktestConfig {
   minArbitrageGap: number;
 }
 
+/**
+ * 简化版风控管理器（内存实现，不依赖数据库）
+ */
+class SimpleRiskManager {
+  private dailyLoss = 0;
+  private dailyTrades = 0;
+  private readonly maxDailyLoss: number;
+  private readonly maxDailyTrades: number;
+  private readonly maxSingleTrade: number;
+  private currentDate: string = '';
+
+  constructor(
+    private totalCapital: number,
+    maxDailyLoss: number = 0.05,
+    maxSingleTrade: number = 0.20,
+    maxDailyTrades: number = 3
+  ) {
+    this.maxDailyLoss = maxDailyLoss;
+    this.maxSingleTrade = maxSingleTrade;
+    this.maxDailyTrades = maxDailyTrades;
+  }
+
+  checkDate(timestamp: Date): void {
+    const dateStr = timestamp.toISOString().split('T')[0];
+    if (dateStr !== this.currentDate) {
+      this.currentDate = dateStr;
+      this.dailyLoss = 0;
+      this.dailyTrades = 0;
+    }
+  }
+
+  checkDailyLossLimit(): { allowed: boolean; currentLoss: number; limit: number } {
+    const limit = this.totalCapital * this.maxDailyLoss;
+    return {
+      allowed: this.dailyLoss < limit,
+      currentLoss: this.dailyLoss,
+      limit,
+    };
+  }
+
+  checkDailyTradeCount(): { allowed: boolean; count: number; limit: number } {
+    return {
+      allowed: this.dailyTrades < this.maxDailyTrades,
+      count: this.dailyTrades,
+      limit: this.maxDailyTrades,
+    };
+  }
+
+  checkSingleTradeLimit(amount: number): { allowed: boolean; limit: number } {
+    const limit = this.totalCapital * this.maxSingleTrade;
+    return {
+      allowed: amount <= limit,
+      limit,
+    };
+  }
+
+  recordTrade(pnl: number): void {
+    this.dailyTrades++;
+    if (pnl < 0) {
+      this.dailyLoss += Math.abs(pnl);
+    }
+  }
+}
+
 export class BacktestEngine {
   private strategy: ArbitrageStrategy;
   private signalGenerator: SignalGenerator;
   private executor: VirtualExecutor;
-  private riskManager: RiskManager;
+  private riskManager: SimpleRiskManager;
   private config: BacktestConfig;
   
   private signals: Map<number, { signal: Signal; opportunity: any }> = new Map();
@@ -34,7 +97,7 @@ export class BacktestEngine {
     this.strategy = new ArbitrageStrategy(config.minArbitrageGap);
     this.signalGenerator = new SignalGenerator();
     this.executor = new VirtualExecutor(config.initialCapital);
-    this.riskManager = new RiskManager(config.initialCapital);
+    this.riskManager = new SimpleRiskManager(config.initialCapital);
   }
 
   /**
@@ -47,13 +110,14 @@ export class BacktestEngine {
     // 按时间排序
     const sortedData = priceData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
     
-    // 按市场分组
-    const marketData = this.groupByMarket(sortedData);
-    
     // 处理每个时间点的数据
+    let signalCount = 0;
     for (const dataPoint of sortedData) {
-      await this.processPricePoint(dataPoint);
+      const hasSignal = await this.processPricePoint(dataPoint);
+      if (hasSignal) signalCount++;
     }
+
+    console.log(`\n📊 总信号数: ${signalCount}`);
 
     // 强制平掉所有持仓
     this.closeAllPositions(sortedData[sortedData.length - 1]);
@@ -69,9 +133,12 @@ export class BacktestEngine {
   /**
    * 处理单个价格点
    */
-  private async processPricePoint(data: HistoricalPrice): Promise<void> {
+  private async processPricePoint(data: HistoricalPrice): Promise<boolean> {
+    // 更新日期
+    this.riskManager.checkDate(data.timestamp);
+
     // 1. 检查现有持仓
-    const openTrades = this.getOpenTrades();
+    const openTrades = this.executor.getOpenTrades();
     for (const trade of openTrades) {
       if (trade.marketId === data.marketId) {
         const hoursHeld = (data.timestamp.getTime() - trade.entryTime.getTime()) / (1000 * 60 * 60);
@@ -82,11 +149,18 @@ export class BacktestEngine {
 
         if (decision.action === 'FULL_CLOSE' || decision.action === 'TIMEOUT') {
           const exitPrice = trade.side === 'YES' ? data.yesPrice : data.noPrice;
-          this.executor.closeTrade(trade.id, exitPrice, data.timestamp, decision.action);
+          const closedTrade = this.executor.closeTrade(trade.id, exitPrice, data.timestamp, decision.action);
+          if (closedTrade?.pnl !== undefined) {
+            this.riskManager.recordTrade(closedTrade.pnl);
+            console.log(`       🔒 平仓 #${trade.id} 原因: ${decision.reason} 盈亏: $${closedTrade.pnl.toFixed(2)}`);
+          }
         } else if (decision.action === 'PARTIAL_CLOSE') {
-          // 简化处理：部分减仓直接全平
           const exitPrice = trade.side === 'YES' ? data.yesPrice : data.noPrice;
-          this.executor.closeTrade(trade.id, exitPrice, data.timestamp, 'PARTIAL_CLOSE');
+          const closedTrade = this.executor.closeTrade(trade.id, exitPrice, data.timestamp, 'PARTIAL_CLOSE');
+          if (closedTrade?.pnl !== undefined) {
+            this.riskManager.recordTrade(closedTrade.pnl);
+            console.log(`       🔒 部分平仓 #${trade.id} 盈亏: $${closedTrade.pnl.toFixed(2)}`);
+          }
         }
       }
     }
@@ -104,8 +178,11 @@ export class BacktestEngine {
       const lossCheck = this.riskManager.checkDailyLossLimit();
       const countCheck = this.riskManager.checkDailyTradeCount();
       
-      if (!lossCheck.allowed || !countCheck.allowed) {
-        return;
+      if (!lossCheck.allowed) {
+        return true;
+      }
+      if (!countCheck.allowed) {
+        return true;
       }
 
       // 生成信号
@@ -113,6 +190,14 @@ export class BacktestEngine {
       const signalId = this.signalIdCounter++;
       
       this.signals.set(signalId, { signal, opportunity });
+
+      // 检查单笔限额
+      let amount = signal.suggested_amount || 200;
+      const amountCheck = this.riskManager.checkSingleTradeLimit(amount);
+      if (!amountCheck.allowed) {
+        // 如果建议金额超过限额，使用限额金额
+        amount = amountCheck.limit;
+      }
 
       // 模拟执行（假设立即确认）
       const trade = this.executor.executeTrade(
@@ -122,47 +207,32 @@ export class BacktestEngine {
         opportunity.recommendation === 'BUY_YES' ? 'YES' : 'NO',
         opportunity.recommendation === 'BUY_YES' ? data.yesPrice : data.noPrice,
         opportunity.deviation,
-        signal.suggested_amount || 200
+        amount
       );
 
-      console.log(`[回测] ${data.timestamp.toISOString()} 发现信号 #${signalId} 偏离度: ${opportunity.deviationPercent.toFixed(2)}%`);
+      console.log(`[回测] ${data.timestamp.toISOString()} ${data.marketName}`);
+      console.log(`       偏离度: ${opportunity.deviationPercent.toFixed(2)}% | 建议: ${opportunity.recommendation} | 等级: ${opportunity.level}`);
+      console.log(`       ✅ 执行交易 #${trade.id} 金额: $${amount}`);
+
+      return true;
     }
+
+    return false;
   }
 
   /**
    * 平掉所有持仓
    */
   private closeAllPositions(lastPrice: HistoricalPrice): void {
-    const openTrades = this.getOpenTrades();
+    const openTrades = this.executor.getOpenTrades();
     
     for (const trade of openTrades) {
       const exitPrice = trade.side === 'YES' ? lastPrice.yesPrice : lastPrice.noPrice;
-      this.executor.closeTrade(trade.id, exitPrice, lastPrice.timestamp, 'MANUAL');
+      const closedTrade = this.executor.closeTrade(trade.id, exitPrice, lastPrice.timestamp, 'MANUAL');
+      if (closedTrade?.pnl) {
+        this.riskManager.recordTrade(closedTrade.pnl);
+      }
     }
-  }
-
-  /**
-   * 按市场分组
-   */
-  private groupByMarket(data: HistoricalPrice[]): Map<string, HistoricalPrice[]> {
-    const groups = new Map<string, HistoricalPrice[]>();
-    
-    for (const point of data) {
-      const existing = groups.get(point.marketId) || [];
-      existing.push(point);
-      groups.set(point.marketId, existing);
-    }
-    
-    return groups;
-  }
-
-  /**
-   * 获取未平仓交易
-   */
-  private getOpenTrades(): VirtualTrade[] {
-    const status = this.executor.getStatus();
-    // 这里简化处理，实际应该从 executor 获取
-    return [];
   }
 
   /**
@@ -184,11 +254,12 @@ export class BacktestEngine {
 
     // 打印交易明细
     if (report.trades.length > 0) {
-      console.log('📝 交易明细:');
-      for (const trade of report.trades.slice(-10)) {  // 只显示最后10笔
+      console.log('📝 交易明细 (最近10笔):');
+      for (const trade of report.trades.slice(-10)) {
         const emoji = (trade.pnl || 0) > 0 ? '🟢' : '🔴';
-        console.log(`  ${emoji} #${trade.id} ${trade.marketName} ${trade.side} 盈亏: $${trade.pnl?.toFixed(2)}`);
+        console.log(`  ${emoji} #${trade.id} ${trade.marketName} ${trade.side} 盈亏: $${trade.pnl?.toFixed(2)} (${trade.pnlPercent?.toFixed(2)}%)`);
       }
+      console.log('');
     }
   }
 }

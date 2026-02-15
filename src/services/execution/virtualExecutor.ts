@@ -234,6 +234,13 @@ export class VirtualExecutor {
   }
 
   /**
+   * 获取所有持仓（未平仓交易）
+   */
+  getOpenTrades(): VirtualTrade[] {
+    return this.trades.filter(t => t.status === 'OPEN');
+  }
+
+  /**
    * 获取当前状态
    */
   getStatus(): {

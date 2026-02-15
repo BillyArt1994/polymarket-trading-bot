@@ -1,0 +1,26 @@
+{
+  "config": {
+    "initialCapital": 1000,
+    "startDate": "2026-02-14T14:53:27.332Z",
+    "endDate": "2026-02-15T14:53:27.332Z",
+    "minArbitrageGap": 0.015
+  },
+  "options": {
+    "days": 1,
+    "scenario": "RANDOM",
+    "markets": 2,
+    "output": "./reports/backtest-day1.json"
+  },
+  "result": {
+    "totalTrades": 0,
+    "winningTrades": 0,
+    "losingTrades": 0,
+    "winRate": 0,
+    "totalPnL": 0,
+    "totalPnLPercent": 0,
+    "avgReturn": 0,
+    "maxDrawdown": 0,
+    "sharpeRatio": 0,
+    "trades": []
+  }
+}

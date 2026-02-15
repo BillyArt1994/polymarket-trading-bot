@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import { BacktestEngine, BacktestConfig } from './services/execution/backtestEngine';
 import { MockDataGenerator } from './services/execution/mockDataGenerator';
-import { writeFileSync } from 'fs';
-import { join } from 'path';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, dirname, isAbsolute } from 'path';
 
 /**
  * 虚拟盘测试 - 运行策略回测
@@ -107,8 +107,14 @@ async function runBacktest() {
   const engine = new BacktestEngine(config);
   const result = await engine.runBacktest(priceData);
 
+  // 确保报告目录存在
+  const reportDir = dirname(options.output);
+  if (!existsSync(reportDir)) {
+    mkdirSync(reportDir, { recursive: true });
+  }
+  
   // 保存报告
-  const reportPath = join(process.cwd(), options.output);
+  const reportPath = isAbsolute(options.output) ? options.output : join(process.cwd(), options.output);
   writeFileSync(reportPath, JSON.stringify({
     config: {
       ...config,

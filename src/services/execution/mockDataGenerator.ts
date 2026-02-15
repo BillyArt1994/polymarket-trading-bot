@@ -26,23 +26,28 @@ export class MockDataGenerator {
       const volatility = 0.005;  // 0.5% 波动
       const trend = Math.sin(i / 100) * 0.01;  // 缓慢趋势
       
-      // 偶尔制造套利机会（偏离度 > 1.5%）
-      let deviation = Math.random() * 0.02 - 0.01;  // -1% 到 +1%
+      // 强制产生套利机会：30% 概率出现偏离
+      let deviation = 0;
       
-      // 10% 概率出现套利机会
-      if (Math.random() < 0.1) {
-        deviation = 0.02 + Math.random() * 0.04;  // 2% 到 6% 偏离
+      // 30% 概率出现套利机会
+      if (Math.random() < 0.3) {
+        // 随机选择偏离度：1.5% - 6%
+        deviation = 0.015 + Math.random() * 0.045;
       }
       
-      // 计算价格
-      let yesPrice = baseYesPrice + (Math.random() - 0.5) * volatility + trend;
-      let noPrice = baseNoPrice + (Math.random() - 0.5) * volatility - trend;
+      // 10% 概率出现大偏离（高风险信号）
+      if (Math.random() < 0.1) {
+        deviation = 0.05 + Math.random() * 0.03;  // 5% 到 8% 偏离
+      }
       
-      // 应用偏离
-      const total = yesPrice + noPrice;
-      const adjustment = (1 - total + deviation) / 2;
-      yesPrice += adjustment;
-      noPrice += adjustment;
+      // 计算价格（从均衡价格开始）
+      const equilibriumYes = 0.5;
+      const equilibriumNo = 0.5;
+      
+      // 根据偏离度调整价格
+      const halfDeviation = deviation / 2;
+      let yesPrice = equilibriumYes - halfDeviation + (Math.random() - 0.5) * 0.01;
+      let noPrice = equilibriumNo - halfDeviation + (Math.random() - 0.5) * 0.01;
       
       // 确保价格在有效范围
       yesPrice = Math.max(0.01, Math.min(0.99, yesPrice));
@@ -56,16 +61,9 @@ export class MockDataGenerator {
         noPrice: Math.round(noPrice * 10000) / 10000,
       });
       
-      // 更新基准价格（缓慢回归）
-      const currentTotal = yesPrice + noPrice;
-      if (Math.abs(1 - currentTotal) > 0.01) {
-        // 有偏离，缓慢回归
-        baseYesPrice = yesPrice * 0.95 + 0.5 * 0.05;
-        baseNoPrice = noPrice * 0.95 + 0.5 * 0.05;
-      } else {
-        baseYesPrice = yesPrice;
-        baseNoPrice = noPrice;
-      }
+      // 更新基准价格（保持一定连续性）
+      baseYesPrice = yesPrice;
+      baseNoPrice = noPrice;
     }
     
     return data;

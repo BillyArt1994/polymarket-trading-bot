@@ -1,0 +1,26 @@
+{
+  "config": {
+    "initialCapital": 1000,
+    "startDate": "2026-02-08T14:52:15.857Z",
+    "endDate": "2026-02-15T14:52:15.857Z",
+    "minArbitrageGap": 0.015
+  },
+  "options": {
+    "days": 7,
+    "scenario": "QUICK_RETURN",
+    "markets": 3,
+    "output": "./reports/backtest-quick.json"
+  },
+  "result": {
+    "totalTrades": 0,
+    "winningTrades": 0,
+    "losingTrades": 0,
+    "winRate": 0,
+    "totalPnL": 0,
+    "totalPnLPercent": 0,
+    "avgReturn": 0,
+    "maxDrawdown": 0,
+    "sharpeRatio": 0,
+    "trades": []
+  }
+}
